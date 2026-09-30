@@ -1,26 +1,569 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* The brand panel — the deep ground the marketing half of the auth screens
+     sits on. Deliberately *not* theme-dependent: it is a printed surface, the
+     same in light and dark, so a split screen does not become two different
+     designs depending on a setting the visitor has not chosen yet. */
+  --color-brand-panel: var(--brand-panel);
+  --color-brand-panel-foreground: var(--brand-panel-foreground);
+  --color-brand-panel-muted: var(--brand-panel-muted);
+  --color-brand-panel-line: var(--brand-panel-line);
+
+  /* The terminal. A second fixed-in-both-themes surface, for the same reason
+     as the brand panel: a shell is a dark object everywhere, and a terminal
+     that turns white in the light theme stops reading as a terminal. */
+  --color-terminal: var(--terminal);
+  --color-terminal-foreground: var(--terminal-foreground);
+  --color-terminal-muted: var(--terminal-muted);
+  --color-terminal-line: var(--terminal-line);
+  --color-terminal-prompt: var(--terminal-prompt);
+  --color-terminal-command: var(--terminal-command);
+  --color-terminal-flag: var(--terminal-flag);
+  --color-terminal-ok: var(--terminal-ok);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Status — semantic, not decorative. The state of a task, not a hue choice. */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+
+  /* Motion. Durations and easings are tokens so `prefers-reduced-motion`
+     can zero them in one place rather than in every component. */
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-instant: 80ms;
+  --duration-fast: 140ms;
+  --duration-normal: 220ms;
+  --duration-slow: 360ms;
+
+  /* Project identity. Eight hues at a lightness that clears 3:1 against both
+     grounds — WCAG 1.4.11, because a project dot is a graphical object that
+     carries meaning and is sometimes the only thing distinguishing two rows.
+     Tokens rather than a TypeScript map of hex values: a stored hex cannot
+     follow the theme, and every one of them would have to be re-picked the
+     next time the palette moves. The database stores the key, never the value.
+
+     Nine, not eight, since Phase 2.5: `slate` is the neutral a board column
+     needs — "Backlog" and "To do" are states without a hue, and forcing them
+     to pick one would make every board louder than the work on it. No project
+     wanted it, which is why it arrived with the statuses. */
+  --color-project-slate: var(--project-slate);
+  --color-project-indigo: var(--project-indigo);
+  --color-project-violet: var(--project-violet);
+  --color-project-blue: var(--project-blue);
+  --color-project-teal: var(--project-teal);
+  --color-project-green: var(--project-green);
+  --color-project-amber: var(--project-amber);
+  --color-project-orange: var(--project-orange);
+  --color-project-rose: var(--project-rose);
+
+  /* Tracking. Display type is set tighter than body type — at 30px the same
+     letter-spacing that reads as comfortable at 14px reads as loose. One token
+     rather than a `tracking-` utility guessed per heading. */
+  --tracking-display: -0.028em;
+  --tracking-heading: -0.018em;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  /* 8px. Tighter than the shadcn default: at 10px a 44px-tall control reads as
+     a pill, and the whole interface softens into something friendlier than a
+     tool somebody keeps open all day. */
+  --radius: 0.5rem;
+
+  /* Surfaces — near-white with a trace of blue, and cards a step brighter than
+     the page rather than the other way round. Chroma is held under 0.005 so
+     grey reads as grey; the brand arrives in the accent, not in the paper. */
+  --background: oklch(0.985 0.002 265);
+  --foreground: oklch(0.145 0.004 265);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0.004 265);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0.004 265);
+
+  /* Brand — indigo, and one single value for both themes. Lightness is the
+     accessibility channel and hue is the brand one: if a pair fails contrast,
+     move lightness, never hue. This sits at the lightness that clears 4.5:1
+     under its own white foreground *and* 3:1 against both grounds, which is
+     exactly what lets it stay one value instead of two. */
+  --primary: oklch(0.545 0.16 277);
+  --primary-foreground: oklch(0.985 0.002 265);
+
+  --secondary: oklch(0.968 0.003 265);
+  --secondary-foreground: oklch(0.28 0.006 265);
+  --muted: oklch(0.968 0.003 265);
+  --muted-foreground: oklch(0.53 0.008 275);
+  --accent: oklch(0.955 0.014 280);
+  --accent-foreground: oklch(0.4 0.1 277);
+
+  --destructive: oklch(0.55 0.19 25);
+  --destructive-foreground: oklch(0.985 0.002 265);
+  --success: oklch(0.52 0.115 155);
+  --success-foreground: oklch(0.985 0.002 265);
+  --warning: oklch(0.79 0.155 79);
+  --warning-foreground: oklch(0.24 0.04 75);
+  --info: oklch(0.53 0.12 240);
+  --info-foreground: oklch(0.985 0.002 265);
+
+  /* Project identity — see the note in `@theme inline`. Chroma is held high
+     enough that eight of these are told apart at 8px, and lightness low enough
+     that each clears 3:1 on the light ground. */
+  --project-slate: oklch(0.53 0.008 275);
+  --project-indigo: oklch(0.545 0.16 277);
+  --project-violet: oklch(0.55 0.18 305);
+  --project-blue: oklch(0.55 0.15 245);
+  --project-teal: oklch(0.52 0.11 190);
+  --project-green: oklch(0.52 0.115 155);
+  --project-amber: oklch(0.58 0.13 75);
+  --project-orange: oklch(0.57 0.16 45);
+  --project-rose: oklch(0.55 0.18 15);
+
+  /* Two different jobs, so two different values. `--border` draws decorative
+     dividers and card edges, where WCAG 1.4.11 does not apply and a 3:1 rule
+     would make every card look boxed in — it is a hairline here, closer to a
+     change of surface than to a drawn line. `--input` draws the boundary of a
+     form field — an interactive component — which 1.4.11 does cover, so it is
+     measurably darker. shadcn ships one value for both; that is why its default
+     input borders sit near 1.2:1. */
+  --border: oklch(0.918 0.003 265);
+  --input: oklch(0.62 0.006 275);
+  --ring: oklch(0.545 0.16 277);
+
+  /* Charts — one hue family walked through lightness and chroma, so a series
+     reads as ordered rather than as five unrelated colours. */
+  --chart-1: oklch(0.545 0.16 277);
+  --chart-2: oklch(0.6 0.14 227);
+  --chart-3: oklch(0.65 0.12 172);
+  --chart-4: oklch(0.7 0.14 75);
+  --chart-5: oklch(0.57 0.17 340);
+
+  --sidebar: oklch(0.972 0.003 265);
+  --sidebar-foreground: oklch(0.24 0.005 265);
+  --sidebar-primary: oklch(0.545 0.16 277);
+  --sidebar-primary-foreground: oklch(0.985 0.002 265);
+  --sidebar-accent: oklch(0.945 0.014 280);
+  --sidebar-accent-foreground: oklch(0.4 0.1 277);
+  --sidebar-border: oklch(0.918 0.003 265);
+  --sidebar-ring: oklch(0.545 0.16 277);
+
+  /* The brand panel. Outside the light/dark pair on purpose — see the note in
+     `@theme inline`. The line token is an alpha wash because it is drawn over
+     a gradient, so no single opaque value would sit right across the panel. */
+  --brand-panel: oklch(0.28 0.09 279);
+  --brand-panel-foreground: oklch(0.97 0.008 279);
+  --brand-panel-muted: oklch(0.8 0.03 279);
+  --brand-panel-line: oklch(0.97 0.008 279 / 14%);
+
+  /* The terminal palette. Hues picked to survive being the only colour in a
+     block of monospace: the prompt and the success tick share a green, so a
+     scanned column of ticks reads as one signal, and the flag grey sits just
+     far enough under the command to separate `pnpm install` from `--frozen`
+     without becoming a second colour. Not redefined in `.dark`. */
+  --terminal: oklch(0.19 0.015 265);
+  --terminal-foreground: oklch(0.93 0.006 265);
+  --terminal-muted: oklch(0.66 0.012 265);
+  --terminal-line: oklch(0.97 0.004 265 / 12%);
+  --terminal-prompt: oklch(0.78 0.16 155);
+  --terminal-command: oklch(0.86 0.09 235);
+  --terminal-flag: oklch(0.72 0.05 280);
+  --terminal-ok: oklch(0.78 0.16 155);
+
+  /* Elevation. Near-neutral and shallow: at this radius and border weight the
+     separation is already carried by the hairline, and a deep shadow beneath it
+     reads as a second, contradictory edge. */
+  --shadow-xs: 0 1px 2px 0 oklch(0.145 0.02 265 / 0.05);
+  --shadow-sm:
+    0 1px 2px 0 oklch(0.145 0.02 265 / 0.06),
+    0 1px 1px -1px oklch(0.145 0.02 265 / 0.05);
+  --shadow-md:
+    0 4px 10px -3px oklch(0.145 0.02 265 / 0.08),
+    0 2px 4px -3px oklch(0.145 0.02 265 / 0.06);
+  --shadow-lg:
+    0 12px 26px -8px oklch(0.145 0.02 265 / 0.12),
+    0 4px 8px -5px oklch(0.145 0.02 265 / 0.07);
+}
+
+/* Dark mode is not the light palette inverted. The ground drops to a near-black
+   that is cool rather than neutral, surfaces lift by a few points of lightness
+   instead of by a shadow, and every border becomes an alpha wash so a stack of
+   panels reads as one material lit from above rather than as boxes on boxes. */
+.dark {
+  --background: oklch(0.146 0.004 265);
+  --foreground: oklch(0.973 0.002 265);
+  --card: oklch(0.187 0.005 265);
+  --card-foreground: oklch(0.973 0.002 265);
+  --popover: oklch(0.225 0.005 265);
+  --popover-foreground: oklch(0.973 0.002 265);
+
+  /* The same indigo as light mode. It clears 3:1 on this ground and 4.5:1
+     under its own white foreground, so the brand does not shift hue or
+     lightness the moment somebody flips the theme. */
+  --primary: oklch(0.545 0.16 277);
+  --primary-foreground: oklch(0.985 0.002 265);
+
+  --secondary: oklch(0.245 0.005 265);
+  --secondary-foreground: oklch(0.973 0.002 265);
+  --muted: oklch(0.245 0.005 265);
+  --muted-foreground: oklch(0.66 0.011 265);
+  --accent: oklch(0.285 0.03 280);
+  --accent-foreground: oklch(0.88 0.05 277);
+
+  /* Status inverts where the brand does not, and for a reason the brand does
+     not have: these fills are also used *as* text — `text-destructive` on a
+     form error, `text-success` on a badge. Holding them at the light-mode
+     lightness would clear 4.5:1 under white inside a filled pill and fail it
+     the moment the same token is asked to be a word on the page ground. So the
+     fill lightens and the foreground goes dark, rather than the reverse. */
+  --destructive: oklch(0.68 0.19 25);
+  --destructive-foreground: oklch(0.16 0.02 265);
+  --success: oklch(0.72 0.14 158);
+  --success-foreground: oklch(0.16 0.02 265);
+  --warning: oklch(0.83 0.145 82);
+  --warning-foreground: oklch(0.2 0.04 78);
+  --info: oklch(0.72 0.12 238);
+  --info-foreground: oklch(0.16 0.02 265);
+
+  /* Project identity. Lifted, like every other status colour in dark mode, so
+     each clears 3:1 on the near-black ground rather than sinking into it. */
+  --project-slate: oklch(0.72 0.008 275);
+  --project-indigo: oklch(0.68 0.15 277);
+  --project-violet: oklch(0.69 0.17 305);
+  --project-blue: oklch(0.69 0.14 245);
+  --project-teal: oklch(0.72 0.1 190);
+  --project-green: oklch(0.72 0.14 158);
+  --project-amber: oklch(0.79 0.13 75);
+  --project-orange: oklch(0.74 0.15 45);
+  --project-rose: oklch(0.7 0.17 15);
+
+  /* Same split as light mode. The input boundary is an opaque value rather
+     than an alpha wash so its contrast is measurable and does not drift with
+     whatever surface happens to sit behind it. */
+  --border: oklch(0.973 0.002 265 / 9%);
+  --input: oklch(0.5 0.008 265);
+  --ring: oklch(0.545 0.16 277);
+
+  --chart-1: oklch(0.66 0.15 277);
+  --chart-2: oklch(0.7 0.13 227);
+  --chart-3: oklch(0.74 0.11 172);
+  --chart-4: oklch(0.81 0.14 82);
+  --chart-5: oklch(0.68 0.16 340);
+
+  --sidebar: oklch(0.168 0.004 265);
+  --sidebar-foreground: oklch(0.94 0.002 265);
+  --sidebar-primary: oklch(0.545 0.16 277);
+  --sidebar-primary-foreground: oklch(0.985 0.002 265);
+  --sidebar-accent: oklch(0.27 0.028 280);
+  --sidebar-accent-foreground: oklch(0.88 0.05 277);
+  --sidebar-border: oklch(0.973 0.002 265 / 9%);
+  --sidebar-ring: oklch(0.545 0.16 277);
+
+  /* `--brand-panel`, `--terminal`, and their companions are intentionally
+     not redefined here. */
+
+  --shadow-xs: 0 1px 2px 0 oklch(0 0 0 / 0.4);
+  --shadow-sm:
+    0 1px 2px 0 oklch(0 0 0 / 0.45), 0 1px 1px -1px oklch(0 0 0 / 0.35);
+  --shadow-md:
+    0 4px 10px -3px oklch(0 0 0 / 0.5), 0 2px 4px -3px oklch(0 0 0 / 0.36);
+  --shadow-lg:
+    0 12px 26px -8px oklch(0 0 0 / 0.58), 0 4px 8px -5px oklch(0 0 0 / 0.42);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+
+    /* The standard properties rather than four `::-webkit-scrollbar` rules:
+       every browser this ships to supports them, and the board — which is the
+       one surface with a scrollbar a reader looks at all day — gets a track
+       that reads as part of the chrome instead of an OS bar across it. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  html {
+    @apply font-sans;
+  }
+
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* Accessibility is part of done — docs/CODE_STANDARDS.md. Zeroing the
+     duration tokens means a component that animates through them needs no
+     media query of its own. */
+  @media (prefers-reduced-motion: reduce) {
+    :root {
+      --duration-instant: 0ms;
+      --duration-fast: 0ms;
+      --duration-normal: 0ms;
+      --duration-slow: 0ms;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Used by the sidebar and the command list, and until now defined nowhere —
+   both asked for no scrollbar and got the browser's. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Long-form documentation — `/docs/[slug]`, rendered from the repository's own
+   markdown by `src/lib/docs.ts`.
+
+   Hand-written rather than `@tailwindcss/typography`. The plugin ships its own
+   greys, its own scale, and its own code-block treatment, and every one of them
+   would have to be overridden back onto the tokens above to stop a docs page
+   looking like a different product from the page that links to it. That is more
+   configuration than this is CSS, and it is a dependency on top.
+
+   The selectors are element selectors under one class because the input is
+   generated HTML: there is no component to hang a utility on, and there never
+   will be. */
+.doc-prose {
+  color: var(--muted-foreground);
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  /* Prose written for a wide editor, read on a 320px phone. Without this, a
+     long unbroken identifier in inline code — `queryClient.invalidateQueries(trpc.task.pathFilter())`
+     is the one that was actually caught — has no break opportunity and pushes
+     the whole document sideways. Measured, not guessed: 112px of horizontal
+     page scroll on `/docs/architecture`. */
+  overflow-wrap: break-word;
+
+  /* 65–75 characters is the readable measure. The container is already
+     `max-w-3xl`; this keeps the text honest inside it. */
+  & > * {
+    max-width: 46rem;
+  }
+
+  & h2,
+  & h3,
+  & h4 {
+    color: var(--foreground);
+    font-weight: 600;
+    letter-spacing: var(--tracking-heading);
+    /* Asymmetric margins: a heading belongs to the text under it, so the gap
+       above is roughly twice the gap below. Equal margins are what makes a long
+       document read as an undifferentiated column. */
+    margin-block: 2.5rem 0.75rem;
+    scroll-margin-top: 5rem;
+  }
+
+  & h2 {
+    border-top: 1px solid var(--border);
+    font-size: 1.375rem;
+    padding-top: 2rem;
+  }
+
+  & h3 {
+    font-size: 1.0625rem;
+  }
+
+  & h4 {
+    font-size: 0.9375rem;
+  }
+
+  & > :first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  & p,
+  & ul,
+  & ol,
+  & blockquote,
+  & table {
+    margin-block: 1rem;
+  }
+
+  & ul,
+  & ol {
+    padding-left: 1.5rem;
+  }
+
+  & ul {
+    list-style: disc;
+  }
+
+  & ol {
+    list-style: decimal;
+  }
+
+  & li {
+    margin-block: 0.375rem;
+  }
+
+  & li::marker {
+    color: var(--muted-foreground);
+  }
+
+  & strong {
+    color: var(--foreground);
+    font-weight: 600;
+  }
+
+  & a {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  & a:hover {
+    text-decoration-thickness: 2px;
+  }
+
+  & a:focus-visible {
+    border-radius: calc(var(--radius) - 4px);
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  /* Inline code. The negative-then-positive padding trick keeps a code span
+     from adding to the line box and opening the leading around it. */
+  & code {
+    background: var(--muted);
+    border-radius: calc(var(--radius) - 4px);
+    color: var(--foreground);
+    font-size: 0.875em;
+    /* `anywhere`, not `break-word`: a dotted call chain is one word with no
+       break opportunity in it, so `break-word` alone still overflows. Breaking
+       mid-identifier is not pretty; a page that scrolls sideways is worse. */
+    overflow-wrap: anywhere;
+    padding: 0.15em 0.35em;
+  }
+
+  /* Fenced blocks. Same terminal ground as the install transcript on the
+     landing page, so a command is the same object everywhere on the site. */
+  & pre {
+    background: var(--terminal);
+    border: 1px solid var(--terminal-line);
+    border-radius: var(--radius);
+    color: var(--terminal-foreground);
+    font-size: 0.8125rem;
+    line-height: 1.7;
+    margin-block: 1.25rem;
+    /* A code block is the one thing in a document allowed to be wider than the
+       measure, and it scrolls inside itself rather than widening the page. */
+    max-width: none;
+    overflow-x: auto;
+    padding: 1rem 1.125rem;
+  }
+
+  & pre code {
+    background: none;
+    color: inherit;
+    font-size: inherit;
+    /* Undo the inline-code wrapping. A fenced block scrolls inside itself —
+       wrapping a shell command or a diagram at an arbitrary column destroys
+       the alignment that made it worth showing as a block. */
+    overflow-wrap: normal;
+    padding: 0;
+  }
+
+  & blockquote {
+    border-left: 2px solid var(--border);
+    padding-left: 1rem;
+  }
+
+  & hr {
+    border-color: var(--border);
+    margin-block: 2.5rem;
+  }
+
+  & table {
+    border-collapse: collapse;
+    display: block;
+    max-width: none;
+    overflow-x: auto;
+    width: 100%;
+  }
+
+  & th,
+  & td {
+    border-bottom: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  & th {
+    color: var(--foreground);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  & img {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
 }
