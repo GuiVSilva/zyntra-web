@@ -1,7 +1,6 @@
-
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -19,8 +18,14 @@ model User {
   sessions      Session[]
   accounts      Account[]
 
-  twoFactorEnabled Boolean?    @default(false)
-  twofactors       TwoFactor[]
+  twoFactorEnabled    Boolean?       @default(false)
+  twofactors          TwoFactor[]
+  members             Member[]
+  invitations         Invitation[]
+  notifications       Notification[] @relation("NotificationRecipient")
+  causedNotifications Notification[] @relation("NotificationActor")
+
+  notificationPreferences NotificationPreference[]
 
   @@map("user")
 }
@@ -35,6 +40,8 @@ model Session {
   userAgent String?
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  activeOrganizationId String?
 
   @@unique([token])
   @@index([userId])
@@ -86,4 +93,700 @@ model TwoFactor {
   @@index([secret])
   @@index([userId])
   @@map("twoFactor")
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  logo      String?
+  metadata  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members         Member[]
+  invitations     Invitation[]
+  projects        Project[]
+  tasks           Task[]
+  workflowStatues WorkflowStatus[]
+  labels          Label[]
+
+  comments                Comment[]
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
+  attachments             Attachment[]
+  subscriptions           Subscription[]
+  webhook                 OrganizationWebhook[]
+  entitlement             Entitlement?
+
+  @@map("organization")
+}
+
+model OrganizationWebhook {
+  id             String       @id @default(uuid(7))
+  organizationId String       @unique @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  url String
+
+  /// Signs the payload, so a receiver can tell our POST from anyone else's.
+  /// Generated on save and shown once, like the 2FA backup codes.
+  secret String
+
+  enabled Boolean @default(true)
+
+  /// What happened last time, and when.
+  ///
+  /// Two nullable columns written by the same update that already runs, and they
+  /// answer the only question anybody asks about a webhook: "is my endpoint
+  /// receiving these?" Without them the feature is a black box whose failure
+  /// mode is silence, and the support conversation has nowhere to start.
+  lastStatus    Int?      @map("last_status")
+  lastAttemptAt DateTime? @map("last_attempt_at") @db.Timestamptz(3)
+  lastError     String?   @map("last_error")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("organization_webhook")
+}
+
+model Member {
+  id             String       @id
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String       @map("user_id")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String       @default("member")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  ownedProjects       Project[]       @relation("ProjectOwner")
+  projectMemberships  ProjectMember[]
+  assignedTasks       Task[]          @relation("TaskAssignee")
+  authoredComments    Comment[]       @relation("CommentAuthor")
+  uploadedAttachments Attachment[]    @relation("AttachmentUploader")
+
+  // The uniqueness the plugin assumes but does not declare: one membership row
+  // per user per organization. Without it a double-accept of an invitation
+  // leaves two rows and `resolveOrgContext` picks one arbitrarily.
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@index([organizationId])
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String?
+  status         String       @default("pending")
+  expiresAt      DateTime     @map("expires_at") @db.Timestamptz(3)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  inviterId      String       @map("inviter_id")
+  inviter        User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+  @@index([inviterId])
+  @@map("invitation")
+}
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+  SELF_HOSTED
+
+  @@map("plan")
+}
+
+model Entitlement {
+  id              String       @id @default(uuid(7))
+  organizationId  String       @unique @map("organization_id")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan            Plan         @default(SELF_HOSTED)
+  maxProjects     Int?         @map("max_projects")
+  maxTasks        Int?         @map("max_tasks")
+  maxMembers      Int?         @map("max_members")
+  maxStorageBytes BigInt?      @map("max_storage_bytes")
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("entitlement")
+}
+
+model ActivityEvent {
+  id             String  @id @default(uuid(7))
+  organizationId String? @map("organization_id")
+  actorId        String? @map("actor_id")
+
+  /// Promoted out of `payload` in Phase 3, and a plain column for the same
+  /// reason the two above are: no foreign key, because the project feed has to
+  /// keep rendering "deleted this project" after the project is gone.
+  ///
+  /// It was already being written into the JSON payload, and
+  /// `payload ->> 'projectId'` cannot use an index without an expression index
+  /// over a cast — which is more schema, not less, and reads worse in psql. The
+  /// migration backfills it from the payload.
+  projectId String? @map("project_id")
+
+  type      String
+  payload   Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  /// The project activity feed, newest first.
+  @@index([organizationId, createdAt])
+  @@index([actorId])
+  @@index([projectId, createdAt])
+  @@map("activity_event")
+}
+
+enum ProjectVisibility {
+  OPEN
+  RESTRICTED
+
+  @@map("project_visibility")
+}
+
+enum StatusCategory {
+  TODO
+  ACTIVE
+  DONE
+
+  @@map("status_category")
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+
+  @@map("task_priority")
+}
+
+model Project {
+  id             String            @id @default(uuid(7))
+  organizationId String            @map("organization_id")
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  /// A token key ("indigo", "amber"), never a hex value. A stored hex cannot
+  /// follow the theme, and every one of them would have to be re-picked the
+  /// next time the palette moves. Resolved by `src/lib/project-appearance.ts`.
+  color          String            @default("indigo")
+  /// A key into the same module's icon map, not an arbitrary lucide name — an
+  /// unbounded name would let a row decide which component the client imports.
+  icon           String            @default("folder")
+  visibility     ProjectVisibility @default(OPEN)
+  /// The `member` row, not the user — see the note on `Task.assigneeId`.
+  /// Nullable because a project outlives whoever created it: when that person
+  /// leaves the organization the project stays and the owner clears, rather
+  /// than the project being deleted along with their membership.
+  ownerId        String?           @map("owner_id")
+  owner          Member?           @relation("ProjectOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  archivedAt     DateTime?         @map("archived_at") @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  members          ProjectMember[]
+  tasks            Task[]
+  workflowStatuses WorkflowStatus[]
+
+  /// Hand-written into the migration, like `Task.searchVector`. Declared here
+  /// only so `migrate dev` does not report the column as drift.
+  searchVector Unsupported("tsvector")? @map("search_vector")
+
+  /// Leads on the tenant, then the column every list filters on. Equality
+  /// first, then the discriminator — docs/ARCHITECTURE.md, Postgres conventions.
+  @@index([organizationId, archivedAt])
+  @@index([ownerId])
+  @@map("project")
+}
+
+/// Rows exist only for `RESTRICTED` projects.
+
+model ProjectMember {
+  id        String   @id @default(uuid(7))
+  projectId String   @map("project_id")
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// `member.id`, so the row cannot name someone outside this organization —
+  /// a `member` row belongs to exactly one tenant by construction.
+  memberId  String   @map("member_id")
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([projectId, memberId])
+  @@index([memberId])
+  @@map("project_member")
+}
+
+model Task {
+  id String @id @default(uuid(7))
+
+  /// Denormalized from `project`. Every task list scopes on the tenant, and
+  /// carrying the column here means that scope is served by one index instead
+  /// of a join to `project` on every read.
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  projectId String  @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title String
+
+  /// A TipTap document, stringified, since Phase 3. Plain text in Phase 2, and
+  /// the migration converted every row it found — `src/lib/rich-text.ts` still
+  /// reads a bare string as one paragraph, because a fork that branched before
+  /// this phase can hold rows the migration never saw.
+  ///
+  /// Phase 3 points the editor at this same column rather than adding a second
+  /// one — v1 kept a parallel `TaskDocument` table and the two drifted.
+  description String?
+
+  /// What the document above *says*, derived on the server on every write.
+  ///
+  /// It exists because `search_vector` is a generated column and cannot call
+  /// anything: pointed at `description` after it became JSON, the search index
+  /// would have matched documents by their node names. Never written by a
+  /// client, and never the source of truth — `description` is.
+  descriptionText String? @map("description_text")
+
+  /// A row, not an enum member, since Phase 2.5 — the column this task sits in
+  /// is named and coloured by whoever owns the project.
+  ///
+  /// `Restrict`, deliberately: deleting a column that still holds work would
+  /// either orphan those tasks or delete them, and neither is what the person
+  /// clicking "delete column" meant. The service refuses first with a message
+  /// naming the count; this is the line underneath it, so a path that forgets
+  /// to check cannot succeed.
+  statusId String         @map("status_id")
+  status   WorkflowStatus @relation(fields: [statusId], references: [id], onDelete: Restrict)
+
+  /// One level of nesting, and one only. The API refuses a subtask of a
+  /// subtask, which is what keeps the completed/total rollup a single grouped
+  /// query instead of a recursive CTE.
+  ///
+  /// `Cascade` rather than `SetNull`: a subtask whose parent is gone appears on
+  /// no board (subtasks are excluded from the board) and under no parent, so
+  /// nulling the link would leave a row nobody can reach from anywhere.
+  parentId String? @map("parent_id")
+  parent   Task?   @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks Task[]  @relation("Subtasks")
+
+  priority TaskPriority @default(MEDIUM)
+
+  /// A fractional index, not an integer position. Dropping a card between two
+  /// others mints a key between their two keys and touches exactly one row;
+  /// v1's `position: Int` renumbered the column on every drop. String rather
+  /// than float because repeated insertion into the same gap exhausts float
+  /// precision after about fifty drops and then silently stops ordering.
+  rank String
+
+  /// Both nullable. v1 required them, which forced a meaningless date onto
+  /// every backlog item and made "due this week" meaningless in turn.
+  startDate DateTime? @map("start_date") @db.Timestamptz(3)
+  dueDate   DateTime? @map("due_date") @db.Timestamptz(3)
+
+  /// `member.id`, not `user.id`. A member row belongs to exactly one
+  /// organization, so a foreign-tenant assignee is unrepresentable before any
+  /// service check runs, and removing someone from the organization clears
+  /// their assignments instead of leaving a name pointing at nobody.
+  assigneeId String? @map("assignee_id")
+  assignee   Member? @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+  archivedAt  DateTime? @map("archived_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  labels        TaskLabel[]
+  comments      Comment[]
+  notifications Notification[]
+  attachments   Attachment[]
+
+  /// Hand-written into the migration as a `GENERATED ALWAYS … STORED` column
+  /// with a GIN index; Prisma can express neither. Declared here only so
+  /// `migrate dev` does not report the column as drift. Never selected — see
+  /// `search.service.ts`, which queries it raw.
+  searchVector Unsupported("tsvector")? @map("search_vector")
+
+  /// The board index is **not** declared here. It is `(organization_id,
+  /// project_id, status_id, rank) WHERE archived_at IS NULL AND parent_id IS
+  /// NULL`, hand-written into the migration SQL because Prisma cannot express a
+  /// partial index. Declaring the non-partial version here as well would ship
+  /// two identical btrees, one of them strictly worse, and charge every task
+  /// write for both.
+  /// My Tasks and the overdue grouping.
+  /// The calendar month window, and every due-date filter that is not mine.
+  /// The subtask rollup, and the cascade when a parent is deleted.
+  @@index([organizationId, assigneeId, dueDate])
+  @@index([organizationId, dueDate])
+  @@index([projectId])
+  @@index([statusId])
+  @@index([parentId])
+  @@map("task")
+}
+
+model WorkflowStatus {
+  id String @id @default(uuid(7))
+
+  /// Denormalized from `project`, for the same reason `Task` carries one: the
+  /// board reads statuses on every page load and scopes on the tenant, and the
+  /// column here means one index serves that instead of a join to `project`.
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  projectId String  @map("project_id")
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name     String
+  /// A token key from src/lib/token-colors.ts, never a hex value — see the note
+  /// on `Project.color`, which is the same decision for the same reason.
+  color    String         @default("slate")
+  position Int
+  category StatusCategory @default(TODO)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tasks Task[]
+
+  /// A reorder therefore cannot be a loop of updates — the second one would
+  /// collide with a position the first has not vacated. See the single
+  /// statement in `workflow-status.service.ts`.
+  /// Two columns called "Done" on one board is a defect, not a preference.
+  @@unique([projectId, position])
+  @@unique([projectId, name])
+  @@index([organizationId])
+  @@map("workflow_status")
+}
+
+/// Organization-scoped, not per-project, so a label means the same thing on
+/// every board. That is the whole point of it: "blocked-on-design" filed under
+/// two projects with two different ids is two labels that merely look alike.
+
+model Label {
+  id             String       @id @default(uuid(7))
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  color          String       @default("indigo")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tasks TaskLabel[]
+
+  @@unique([organizationId, name])
+  @@map("label")
+}
+
+/// A pure join. Composite primary key rather than a surrogate id: nothing ever
+/// refers to one of these rows by id, and a uuid column on a join table is a
+/// second btree paid for on every tag and untag.
+
+model TaskLabel {
+  taskId  String @map("task_id")
+  task    Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  labelId String @map("label_id")
+  label   Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([taskId, labelId])
+  @@index([labelId])
+  @@map("task_label")
+}
+
+model Comment {
+  id String @id @default(uuid(7))
+
+  /// Denormalized from `task`, for the reason `Task` carries one: the audit and
+  /// moderation reads scope on the tenant, and the column here means one index
+  /// serves that instead of a two-hop join through `task` to `project`.
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  taskId String @map("task_id")
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  /// The `member` row, not the user — a member belongs to exactly one tenant,
+  /// so a foreign-tenant author is unrepresentable before any check runs.
+  ///
+  /// Nullable with `SetNull`, like `Project.ownerId`: a discussion outlives the
+  /// membership of whoever contributed to it. When someone leaves the
+  /// organization their comments stay and attribute to "Former member", which
+  /// is honest — deleting the thread would lose everyone else's replies too.
+  authorId String? @map("author_id")
+  author   Member? @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  /// A TipTap document, stringified. See the note on `Task.description`.
+  body String
+
+  /// Derived from `body` on every write by `src/lib/rich-text.ts`. Not searched
+  /// in v2.0.0 — comment search is in BACKLOG — but carried from the start so
+  /// the two rich-text columns in this schema have one shape rather than two.
+  bodyText String @map("body_text")
+
+  /// Set only on a real edit, so the UI can say "edited" without comparing two
+  /// timestamps that `@updatedAt` moves for reasons a reader never sees.
+  editedAt DateTime? @map("edited_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  notifications Notification[]
+
+  /// The thread: equality on the task, then the sort column. Cursor pagination
+  /// walks it in one direction and never sorts in memory.
+  @@index([taskId, createdAt])
+  @@index([organizationId])
+  @@index([authorId])
+  @@map("comment")
+}
+
+/// What an inbox row can be about.
+///
+/// An enum rather than the free-text `String` on `ActivityEvent`, and
+/// deliberately so: the audit trail accretes types every phase and nothing joins
+/// on them, while these four each have a renderer, an email template, and a
+/// preference toggle. A fifth is a feature, not a data point, and having the
+/// database refuse an unknown one is worth the migration.
+///
+/// Invitation is **not** here. It ships as an email from Phase 1 and goes to
+/// someone who is not a user yet — there is no inbox to write to and no
+/// preference row to read.
+
+enum NotificationType {
+  TASK_ASSIGNED
+  MENTION
+  COMMENT
+  DUE_SOON
+
+  @@map("notification_type")
+}
+
+model Notification {
+  id String @id @default(uuid(7))
+
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// The recipient, as a `user` — see the note on `User.notifications`.
+  userId String @map("user_id")
+  user   User   @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Who caused it. Null when the system did — a due-date reminder has no
+  /// actor, which is exactly why this is nullable rather than pointing at a
+  /// fake one.
+  actorId String? @map("actor_id")
+  actor   User?   @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  type NotificationType
+
+  /// Denormalized at write time, and not a convenience.
+  ///
+  /// The inbox renders from these two columns alone, so a row survives its task
+  /// being deleted long enough to say what it was about. Reading the title back
+  /// through the relation would make every deleted task a blank row in
+  /// everyone's history.
+  title String
+  body  String?
+
+  taskId String? @map("task_id")
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  commentId String?  @map("comment_id")
+  comment   Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  /// The idempotency key, and the whole of the scheduled job's "send once"
+  /// guarantee.
+  ///
+  /// Null for everything a person triggers — two comments really are two
+  /// notifications. The due-date job writes `<taskId>:<yyyy-mm-dd>`, so a second
+  /// run on the same day collides with the unique index below and the row is
+  /// skipped; the email is sent only for rows that were actually created.
+  ///
+  /// Postgres treats NULLs as distinct in a unique index, which is why the
+  /// null-keyed rows never collide with each other. That behaviour is load
+  /// bearing here, not incidental.
+  dedupeKey String? @map("dedupe_key")
+
+  readAt    DateTime? @map("read_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  /// The inbox page: equality on the two scoping columns, then the sort column.
+  /// The unread badge is a **partial** index, hand-written into the migration:
+  /// it is read on every page load and matches a small fraction of the rows.
+  /// Prisma cannot express `WHERE read_at IS NULL`, so it is not declared here.
+  @@unique([userId, type, dedupeKey])
+  @@index([userId, organizationId, createdAt])
+  @@index([taskId])
+  @@index([commentId])
+  @@index([actorId])
+  @@index([organizationId])
+  @@map("notification")
+}
+
+/// One row per person per organization, written the first time somebody changes
+/// one — never on a read, because the settings screen is opened far less often
+/// than the pages that consult it and a read-through insert would put a write
+/// on the path of every notification.
+///
+/// Only email is configurable. The inbox always records everything, so the row
+/// is a complete history of what happened to you and a muted channel cannot
+/// erase it — a type × channel matrix would let someone silence the record
+/// itself, which turns the inbox into a thing you cannot trust.
+///
+/// Every column defaults to `true`, and an absent row reads as all-true, so a
+/// person who never opens the settings screen gets the same behaviour as one who
+/// opened it and changed nothing.
+
+model NotificationPreference {
+  id String @id @default(uuid(7))
+
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  emailOnAssignment Boolean @default(true) @map("email_on_assignment")
+  emailOnMention    Boolean @default(true) @map("email_on_mention")
+  emailOnComment    Boolean @default(true) @map("email_on_comment")
+  emailOnDueDate    Boolean @default(true) @map("email_on_due_date")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  /// Per organization, not per user: someone in a busy client organization and
+  /// a quiet internal one wants different answers, and one global switch would
+  /// make them choose.
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("notification_preference")
+}
+
+enum AttachmentStatus {
+  PENDING
+  READY
+  DELETED
+
+  @@map("attachment_status")
+}
+
+/// A file on a task.
+///
+/// Keyed by **object key**, never a URL: a stored URL cannot be re-signed and
+/// does not survive a bucket move. Every URL this app serves is minted on demand
+/// and expires in minutes — docs/ARCHITECTURE.md, "Storage is provider-neutral".
+
+model Attachment {
+  id String @id @default(uuid(7))
+
+  /// Denormalized from `task`, for the same reason `Task` carries it: the usage
+  /// SUM and the tenant filter are served by one index rather than two joins.
+  organizationId String       @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  /// Required. An attachment has exactly one parent and it is a task — the same
+  /// shape `Comment.taskId` took in Phase 3, and for the same reason: v1's
+  /// project/task mismatch is what made "which of these can I see?" unanswerable.
+  taskId String @map("task_id")
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  /// `member.id`, nullable, `SetNull` — the trade `Project.ownerId` and
+  /// `Comment.authorId` already took. A removed member's uploads survive and
+  /// render as "Former member"; the file does not vanish with the person.
+  uploaderId String? @map("uploader_id")
+  uploader   Member? @relation("AttachmentUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
+
+  /// Unique, because two rows naming one object means deleting either one
+  /// breaks the other.
+  objectKey String @unique @map("object_key")
+
+  /// What the uploader called it. Display only — never part of the object key,
+  /// which is generated, so a hostile filename cannot shape a storage path.
+  fileName String @map("file_name")
+
+  /// Written twice. The client's claim opens the PENDING row and is what the
+  /// limit check refuses on, because it is the only number that exists before
+  /// the bytes do. `HeadObject` at finalize overwrites it with the truth, and
+  /// that is the number storage is billed on.
+  contentType String @map("content_type")
+  size        BigInt
+
+  status AttachmentStatus @default(PENDING)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  /// The details sheet's list.
+  /// The usage SUM, and the tenant filter on every read.
+  /// The sweep's index is **not** declared here. It is `(status, created_at)
+  /// WHERE status <> 'READY'`, hand-written into the migration, because Prisma
+  /// cannot express a partial index and the non-partial twin would index every
+  /// settled row to find the handful that are not.
+  @@index([taskId, createdAt])
+  @@index([organizationId, status])
+  @@index([uploaderId])
+  @@map("attachment")
+}
+
+/// A Polar subscription, mirrored so the app never asks Polar anything.
+///
+/// It is a mirror, not an authority: `Entitlement` is what the application reads
+/// for limits, and this row exists to show a person what they are paying for and
+/// to give the webhook something to reconcile against. See
+/// docs/ARCHITECTURE.md, "Entitlements are the only limit authority".
+
+model Subscription {
+  id String @id @default(uuid(7))
+
+  /// Unique, and an organization rather than a user: checkout passes the
+  /// organization id as Polar's `referenceId`, so the team gets the plan and not
+  /// whoever happened to hold the card.
+  organizationId String       @unique @map("organization_id")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  polarSubscriptionId String @unique @map("polar_subscription_id")
+  polarCustomerId     String @map("polar_customer_id")
+  productId           String @map("product_id")
+
+  /// Polar's vocabulary, stored verbatim as a string rather than mapped into an
+  /// enum of ours. A provider that adds a status must not become a migration,
+  /// and nothing in the app branches on more than "is this active".
+  status String
+
+  currentPeriodEnd  DateTime? @map("current_period_end") @db.Timestamptz(3)
+  cancelAtPeriodEnd Boolean   @default(false) @map("cancel_at_period_end")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("subscription")
+}
+
+/// One row per webhook event id. The whole of webhook idempotency.
+///
+/// Same shape as Phase 3's reminder dedupe and the same argument: "replaying an
+/// event produces one state change" is a database property or it is a race. The
+/// handler inserts here first and returns on a unique violation.
+///
+/// `id` is the provider's event id, so it takes no `@default` — and no foreign
+/// key anywhere, because this table describes messages rather than tenants.
+
+model WebhookEvent {
+  id         String   @id
+  provider   String   @default("polar")
+  type       String
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+
+  /// The sweep that keeps this table from growing without bound is a Phase 5
+  /// line, not a Phase 4 one — a row is ~100 bytes and a busy organization
+  /// produces a handful a month.
+  @@index([receivedAt])
+  @@map("webhook_event")
 }
