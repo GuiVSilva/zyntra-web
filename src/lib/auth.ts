@@ -17,6 +17,29 @@ export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: 'postgresql'
   }),
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: true,
+    sendResetPassword: async ({ user, url }) => {
+      // TODO: Implement a proper email sending service here to send the reset password email to the user.
+      // send reset password email to the user
+      // you can use any email service provider like SendGrid, Postmark, etc.
+      console.log(
+        `Sending reset password email to ${user.email} with url: ${url}`
+      )
+    }
+  },
+  emailVerification: {
+    sendOnSignUp: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      // TODO: Implement a proper email sending service here to send the verification email to the user.
+      // send verification email to the user
+      // you can use any email service provider like SendGrid, Postmark, etc.
+      console.log(
+        `Sending verification email to ${user.email} with url: ${url}`
+      )
+    }
+  },
   trustedOrigins: [process.env.BETTER_AUTH_URL as string],
   socialProviders: {
     github: {
