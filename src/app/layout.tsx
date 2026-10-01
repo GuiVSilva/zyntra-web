@@ -22,13 +22,13 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'Zyntra',
-  description: 'Modern Project and task manager for teams'
+  description: 'Gestão moderna de projetos e tarefas para equipes'
 }
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <html
-      lang="en"
+      lang="pt-BR"
       className={cn(
         'h-full',
         'antialiased',
