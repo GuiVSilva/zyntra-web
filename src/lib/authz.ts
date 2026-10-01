@@ -43,7 +43,7 @@ export async function resolveOrgContext(
   if (!member) {
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "You are no longer a member of this organization Você não é mais membro desta organização",
+      message: "Você não é mais membro desta organização",
       cause: AuthzCause.NOT_A_MEMBER,
     });
   }
